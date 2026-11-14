@@ -273,7 +273,13 @@ nav.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2
     return readings.slice().sort(function(a,b){return a.dt<b.dt?1:a.dt>b.dt?-1:0});
   }
   function renderHistory(){
-    var list=sorted();
+    var list=readings.slice().sort(function(a,b){
+      var da=dayKey(a.dt),db=dayKey(b.dt);
+      if(da!==db)return da<db?1:-1;
+      var sa=a.session==="Evening"?1:0,sb=b.session==="Evening"?1:0;
+      if(sa!==sb)return sa-sb;
+      return a.dt<b.dt?-1:a.dt>b.dt?1:0;
+    });
     if(!list.length){
       $("history").innerHTML='<div class="card empty">No readings yet. Enter your first reading above.</div>';
       return;
@@ -438,10 +444,19 @@ nav.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2
   }
   function exportCsv(){
     if(!readings.length){toolMsg("No readings to export yet.","var(--s2)");return}
-    var rows=[["Date","Time","Session","Systolic","Diastolic","Pulse","Status","Comment"]];
+    var rows=[["Date","BP AM","Pulse AM","BP PM","Pulse PM","Comment"]];
+    var days={},keys=[];
     sorted().reverse().forEach(function(r){
-      var st=status(+r.sys,+r.dia);
-      rows.push([dayKey(r.dt),r.dt.split("T")[1]||"",r.session,r.sys,r.dia,r.pulse==null?"":r.pulse,st?st.t:"",r.comment||""]);
+      var k=dayKey(r.dt);
+      if(!days[k]){days[k]={Morning:[],Evening:[]};keys.push(k)}
+      days[k][r.session==="Evening"?"Evening":"Morning"].push(r);
+    });
+    function bp(r){return r?r.sys+"/"+r.dia:""}
+    function pl(r){return r&&r.pulse>0?r.pulse:""}
+    function cm(r,tag){return r&&r.comment?tag+": "+r.comment:""}
+    keys.forEach(function(k){
+      var m=days[k].Morning,e=days[k].Evening,n=Math.max(m.length,e.length);
+      for(var i=0;i<n;i++)rows.push([k,bp(m[i]),pl(m[i]),bp(e[i]),pl(e[i]),[cm(m[i],"AM"),cm(e[i],"PM")].filter(Boolean).join(" | ")]);
     });
     var csv="\ufeff"+rows.map(function(r){return r.map(csvCell).join(",")}).join("\r\n");
     download("blood-pressure-"+stamp()+".csv",csv,"text/csv;charset=utf-8");
